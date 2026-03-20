@@ -50,6 +50,8 @@ class MyPlugin(Star):
 
     # 解析Steam64 ID
     async def _parse_steam64_id(self, input_str: str) -> str | None:
+        s = input_str.strip()
+        
         # 匹配Steam64 URL
         url_match = re.search(r"steamcommunity\.com/profiles/(\d{17})", input_str)
         if url_match:
@@ -71,11 +73,21 @@ class MyPlugin(Star):
                             return data["response"]["steamid"]
             except Exception as e:
                 logger.error(f"转换自定义URL失败：{e}")
-        
-        # 匹配纯Steam64 ID
-        if re.fullmatch(r"7656119\d{10}", input_str.strip()):
-            return input_str.strip()
-        
+
+        # 匹配 17 位纯数字 SteamID
+        if re.fullmatch(r"\d{17}", s):
+            return s
+
+        # 匹配 profiles/xxx
+        match = re.search(r"profiles/(\d{17})", s)
+        if match:
+            return match.group(1)
+
+        # 匹配 id/xxx 自定义ID（不依赖API Key也能返回原串，让网页自己解析）
+        id_match = re.search(r"id/([^/]+)", s)
+        if id_match:
+            return id_match.group(1)
+
         return None
 
     # 抓取SteamHunters完整数据
