@@ -2,7 +2,13 @@
 
 快速查询Steam成就信息并通过机器人播（zhuang）报（bi）的简易插件。
 
-使用方法：/查steam成就 Steam64ID或Steam个人主页URL
+> 使用方法：/查steam成就 <SteamID><Steam64ID><Steam主页URL>
+
+输出：
+<img width="321" height="450" alt="image" src="https://github.com/user-attachments/assets/b39b7878-33b7-4422-9dda-546e365d6666" />
+
+/清理steam缓存
+清除插件生成的缓存文件
 
 ps：需要保持Steam个人资料公开并在SteamHunter（steamhunters.com）网站更新账号信息（点击账户头像旁的update）。
 
