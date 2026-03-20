@@ -1,6 +1,14 @@
-name: helloworld # 插件唯一识别名，以 astrbot_plugin_ 前缀开头
-display_name: helloworld # 用于展示的名字，可以是方便人类阅读的名字（需要版本 >= v4.5.0，低版本不会报错，请放心填写）
-desc: AstrBot 插件示例。 # 插件简短描述
-version: v1.3.0 # 插件版本号。格式：v1.1.1 或者 v1.1
-author: Soulter # 作者
-repo: https://github.com/Soulter/helloworld # 插件的仓库地址
+name: astrbot_plugin_steamachievement_query
+display_name: Steam成就查询
+desc: 查询SteamHunters成就数据，支持Steam64ID和个人资料URL查询
+version: v1.0.0
+author: Muroki
+repo: https://github.com/Murokivot/astrbot_plugin_steamachievement_query
+commands:
+  - name: 查steam成就
+    usage: "/查steam成就 <Steam64ID/个人资料URL>"
+    description: "查询SteamHunters成就数据"
+    aliases: ["steam成就", "查询steam成就"]  # 指令别名
+dependencies:
+  - aiohttp>=3.9.0
+  - beautifulsoup4>=4.12.0
