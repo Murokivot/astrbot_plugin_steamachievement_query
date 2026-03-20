@@ -3,11 +3,11 @@
 快速查询Steam成就信息并通过机器人播（zhuang）报（bi）的简易插件。
 
 使用方法：
->/查steam成就 <SteamID> <Steam64ID> <Steam主页URL>
+/查steam成就 <SteamID> <Steam64ID> <Steam主页URL>
 
 <img width="321" height="450" alt="image" src="https://github.com/user-attachments/assets/b39b7878-33b7-4422-9dda-546e365d6666" />
 
->/清理steam缓存
+/清理steam缓存
 
 清除插件生成的缓存文件
 
