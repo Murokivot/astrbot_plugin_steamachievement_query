@@ -322,7 +322,7 @@ class MyPlugin(Star):
 
         yield event.plain_result("\n".join(lines))
 
-    @filter.command("清理steam缓存")
+    """@filter.command("清理steam缓存")
     async def clear_steam_cache(self, event):
         try:
             if self.cache_path.exists():
@@ -333,7 +333,7 @@ class MyPlugin(Star):
                 await event.reply("ℹ️ 当前无Steam成就查询缓存文件，无需清理！")
         except Exception as e:
             logger.error(f"清理缓存失败：{e}")
-            await event.reply(f"❌ 清理缓存失败：{str(e)}")
+            await event.reply(f"❌ 清理缓存失败：{str(e)}")"""
 
     async def terminate(self):
         logger.info("Steam成就插件（v1.0.0）已卸载")
