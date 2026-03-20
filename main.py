@@ -1,4 +1,3 @@
-# 兼容新旧版本的导入（核心修复）
 try:
     # 新版 AstrBot (v4.5+)
     from astrbot.api.event import filter, AstrMessageEvent
