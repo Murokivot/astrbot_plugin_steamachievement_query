@@ -10,8 +10,8 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 
 @register(
-    name="steam_achievement",
-    author="YourName",
+    name="astrbot_plugin_steamachievement_query",
+    author="Muroki",
     version="1.0.0",
     desc="查询SteamHunters平台的游戏成就数据，支持Steam64ID/个人资料URL"
 )
@@ -45,19 +45,21 @@ class MyPlugin(Star):
 
     async def _parse_steam64_id(self, input_str: str) -> str | None:
         s = input_str.strip()
+        # 匹配纯Steam64ID（17位数字）
         if re.fullmatch(r"\d{17}", s):
             return s
-        match = re.search(r"profiles/(\d{17})", s)
-        if match:
-            return match.group(1)
-        id_match = re.search(r"id/([^/]+)", s)
-        if id_match:
-            return id_match.group(1)
+        # 匹配Steam个人资料URL中的64ID
+        url_match = re.search(r"steamcommunity\.com/(?:profiles/(\d{17})|id/([^/]+))", s)
+        if url_match:
+            # 优先返回64ID，没有则返回自定义ID
+            return url_match.group(1) or url_match.group(2)
+        # 匹配纯自定义ID（字母数字下划线）
         if re.match(r"^[a-zA-Z0-9_-]+$", s):
             return s
+        # 格式不正确返回None
         return None
 
-    def _parse_update_time(self, title_str: str) -> str:
+    def _parse_update_time(self, title_str):
         try:
             match = re.search(r"Updated:\s*(.+?)(?:&lt;br|$)", title_str, re.I)
             if match:
@@ -66,46 +68,41 @@ class MyPlugin(Star):
         except:
             return "未知"
 
-    def _parse_rank(self, rank_elem) -> str:
+    def _parse_rank(self, rank_elem):
         if rank_elem and rank_elem.find("a"):
-            rank_text = rank_elem.find("a").get_text(strip=True)
-            rank_match = re.search(r"#([\d,]+)", rank_text)
-            if rank_match:
-                return rank_match.group(1).replace(",", "")
+            rt = rank_elem.find("a").get_text(strip=True)
+            m = re.search(r"#([\d,]+)", rt)
+            if m:
+                return m.group(1).replace(",", "")
         return "未上榜"
 
-    def _parse_country(self, soup) -> str:
+    def _parse_country(self, soup):
         try:
-            flag_elem = soup.find("span", class_="flag")
-            if flag_elem:
-                pt = flag_elem.parent.get_text(strip=True)
-                if pt:
-                    return pt
-                img = flag_elem.find("img")
+            flag = soup.find("span", class_="flag")
+            if flag:
+                t = flag.parent.get_text(strip=True)
+                if t:
+                    return t
+                img = flag.find("img")
                 if img and img.get("src"):
                     c = img["src"].split("/")[-1].replace(".svg", "").upper()
-                    m = {
-                        "CN":"中国","US":"美国","JP":"日本","KR":"韩国","GB":"英国",
-                        "DE":"德国","FR":"法国","RU":"俄罗斯","CA":"加拿大","AU":"澳大利亚"
-                    }
-                    return m.get(c, c)
+                    mp = {"CN":"中国","US":"美国","JP":"日本","KR":"韩国","GB":"英国","DE":"德国","FR":"法国","RU":"俄罗斯","CA":"加拿大","AU":"澳大利亚"}
+                    return mp.get(c, c)
             return "未知"
         except:
             return "未知"
 
-    async def _fetch_steam_data(self, steam_id: str) -> dict | None:
+    async def _fetch_steam_data(self, steam_id):
         url = f"https://steamhunters.com/profiles/{steam_id}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers, timeout=15) as resp:
+            async with aiohttp.ClientSession() as s:
+                async with s.get(url, headers=headers, timeout=15) as resp:
                     if resp.status != 200:
                         return None
                     html = await resp.text()
-                    soup = BeautifulSoup(html, "html.parser")
 
+            soup = BeautifulSoup(html, "html.parser")
             data = {
                 "username": "未知",
                 "country": "未知",
@@ -123,61 +120,53 @@ class MyPlugin(Star):
                 "global_achievements_rank": "未上榜",
                 "is_banned": False,
                 "ban_msg": "",
-                "has_data": False  # 新增：标记是否有有效数据
+                "has_data": False
             }
 
-            # 1. 封禁检测（全局文本匹配，100%生效）
-            body_text = soup.get_text(" ").lower()
-            if "not listed on the leaderboards" in body_text:
+            # 封禁检测
+            txt = soup.get_text(" ").lower()
+            if "not listed on the leaderboards" in txt:
                 data["is_banned"] = True
                 data["ban_msg"] = "无法查询有效排名，该用户疑似因刷成就被平台封禁"
 
-            # 2. 解析核心数据
             # 用户名
-            user = soup.find("h1")
-            if user:
-                data["username"] = user.get_text(strip=True)
+            h1 = soup.find("h1")
+            if h1:
+                data["username"] = h1.get_text(strip=True)
 
-            # 国籍
             data["country"] = self._parse_country(soup)
 
-            # 积分
-            points = soup.find("span", {"data-stat-key": "ValidPoints"})
-            if points:
-                data["points"] = re.sub(r"\D", "", points.get_text())
+            # 各项数据
+            keys = [
+                ("points", "ValidPoints"),
+                ("achievements", "ValidAchievementUnlockCount"),
+                ("games_played", "ValidStartedGameCount"),
+                ("games_completed", "ValidCompletedGameCount"),
+            ]
+            for k, sk in keys:
+                tag = soup.find("span", {"data-stat-key": sk})
+                if tag:
+                    v = re.sub(r"\D", "", tag.get_text())
+                    if v:
+                        data[k] = v
 
-            # 成就数
-            ach = soup.find("span", {"data-stat-key": "ValidAchievementUnlockCount"})
-            if ach:
-                data["achievements"] = re.sub(r"\D", "", ach.get_text())
+            # 平均积分 & 完成率
+            for k, sk in [("avg_points", "ValidPointsPerAchievement"), ("completion_rate", "ValidAgcObtainable")]:
+                tag = soup.find("span", {"data-stat-key": sk})
+                if tag:
+                    v = tag.get_text(strip=True).replace("..", ".")
+                    data[k] = v
 
-            # 玩过游戏
-            played = soup.find("span", {"data-stat-key": "ValidStartedGameCount"})
-            if played:
-                data["games_played"] = re.sub(r"\D", "", played.get_text())
-
-            # 全成就游戏
-            completed = soup.find("span", {"data-stat-key": "ValidCompletedGameCount"})
-            if completed:
-                data["games_completed"] = re.sub(r"\D", "", completed.get_text())
-
-            # 平均积分
-            avg = soup.find("span", {"data-stat-key": "ValidPointsPerAchievement"})
-            if avg:
-                t = avg.get_text(strip=True).replace("..", ".")
-                data["avg_points"] = t
-
-            # 完成率
-            comp = soup.find("span", {"data-stat-key": "ValidAgcObtainable"})
-            if comp:
-                t = comp.get_text(strip=True).replace("..", ".")
-                data["completion_rate"] = t
-
-            # 游戏时长
-            playtime_tag = soup.find("span", {"data-stat-key": "Playtime"})
+            # 游戏时长 最终修复
+            playtime_tag = soup.find("div", class_="stat-item", string=re.compile("Playtime", re.I))
             if playtime_tag:
-                txt = playtime_tag.get_text(strip=True)
-                m = re.search(r"([\d,]+)", txt)
+                pt_text = playtime_tag.get_text(strip=True)
+                m = re.search(r"([\d,\.]+)\s*(?:hrs|hours)", pt_text, re.I)
+                if m:
+                    data["playtime"] = m.group(1).replace(",", "")
+            else:
+                all_text = soup.get_text()
+                m = re.search(r"Playtime.*?([\d,\.]+)\s*(?:hrs|hours)", all_text, re.I | re.S)
                 if m:
                     data["playtime"] = m.group(1).replace(",", "")
 
@@ -186,27 +175,20 @@ class MyPlugin(Star):
             if time_tag and time_tag.get("title"):
                 data["update_time"] = self._parse_update_time(time_tag["title"])
 
-            # 3. 判断是否有有效数据（核心字段非0/未知）
-            core_fields = [
-                data["points"], data["achievements"], 
-                data["games_played"], data["playtime"]
-            ]
-            # 如果有任意一个核心字段非0，说明有数据
-            data["has_data"] = any([field != "0" and field != "" for field in core_fields])
+            # 是否有有效数据
+            core = [data["points"], data["achievements"], data["games_played"]]
+            data["has_data"] = any(x not in ("0", "") for x in core)
 
-            # 4. 排名（没被封禁且有数据才读）
+            # 排名
             if not data["is_banned"] and data["has_data"]:
-                cn_p = soup.find("td", title=re.compile("Country points rank", re.I))
-                data["cn_points_rank"] = self._parse_rank(cn_p)
-
-                gl_p = soup.find("td", title=re.compile("Global points rank", re.I))
-                data["global_points_rank"] = self._parse_rank(gl_p)
-
-                cn_a = soup.find("td", title=re.compile("Country achievements rank", re.I))
-                data["cn_achievements_rank"] = self._parse_rank(cn_a)
-
-                gl_a = soup.find("td", title=re.compile("Global achievements rank", re.I))
-                data["global_achievements_rank"] = self._parse_rank(gl_a)
+                cp = soup.find("td", title=re.compile("Country points rank", re.I))
+                gp = soup.find("td", title=re.compile("Global points rank", re.I))
+                ca = soup.find("td", title=re.compile("Country achievements rank", re.I))
+                ga = soup.find("td", title=re.compile("Global achievements rank", re.I))
+                data["cn_points_rank"] = self._parse_rank(cp)
+                data["global_points_rank"] = self._parse_rank(gp)
+                data["cn_achievements_rank"] = self._parse_rank(ca)
+                data["global_achievements_rank"] = self._parse_rank(ga)
 
             return data
 
@@ -215,18 +197,23 @@ class MyPlugin(Star):
             return None
 
     @filter.command("查steam成就")
-    async def steam_achievement_handler(self, event: AstrMessageEvent):
+    async def steam_achievement_handler(self, event):
         msg = event.message_str.strip()
         argv = msg.split(maxsplit=1)
+        
+        # 1. 无参数提示
         if len(argv) < 2:
-            yield event.plain_result("用法：/查steam成就 Steam64ID/URL")
+            yield event.plain_result("请输入正确格式：/查steam成就 + steam64id 或steam主页URL")
             return
 
+        # 2. 解析ID并判断格式
         sid = await self._parse_steam64_id(argv[1])
         if not sid:
-            yield event.plain_result("无法识别SteamID")
+            # 优化后的格式错误提示
+            yield event.plain_result("请输入正确格式：/查steam成就 + steam64id 或steam主页URL")
             return
 
+        # 3. 缓存逻辑
         cache = self._init_cache()
         now = int(time.time())
         key = f"sid_{sid}"
@@ -236,18 +223,17 @@ class MyPlugin(Star):
         else:
             data = await self._fetch_steam_data(sid)
             if not data:
-                # 兜底提示：无档案
                 yield event.plain_result("未查询到档案，请检查steam隐私设置，并前往SteamHunter更新档案")
                 return
             cache[key] = {"ts": now, "data": data}
             self._save_cache(cache)
 
-        # ========== 新增：无数据兜底提示 ==========
+        # 4. 无数据兜底提示
         if not data["has_data"] and not data["is_banned"]:
             yield event.plain_result("未查询到档案，请检查steam隐私设置，并前往SteamHunter更新档案")
             return
 
-        # 构建正常回复
+        # 5. 构建正常回复
         lines = [
             f"🎮 Steam成就查询结果（{data['username']}）",
             f"├─ 🗺️ 所属地区：{data['country']}",
@@ -261,21 +247,18 @@ class MyPlugin(Star):
             f"├─ 🕒 档案最近更新：{data['update_time']}"
         ]
 
-        # 封禁提示
+        # 6. 封禁提示
         if data["is_banned"]:
             lines.append(f"├─ ⚠️ {data['ban_msg']}")
         else:
-            # 有数据才显示排名
-            if data["has_data"]:
-                lines += [
-                    "├────────────────────────────",
-                    "├─ 📈 积分排名",
-                    f"│  ├─ 🌍{data['country']}排名：{data['cn_points_rank']}",
-                    f"│  └─ 🌍 世界排名：{data['global_points_rank']}",
-                    "├─ 🏅 成就数排名",
-                    f"│  ├─ 🌍{data['country']}排名：{data['cn_achievements_rank']}",
-                    f"│  └─ 🌍 世界排名：{data['global_achievements_rank']}"
-                ]
+            lines += [
+                "├─ 📈 积分排名",
+                f"│  ├─ 🌍 {data['country']}排名：{data['cn_points_rank']}",
+                f"│  └─ 🌍 世界排名：{data['global_points_rank']}",
+                "├─ 🏅 成就数排名",
+                f"│  ├─ 🌍 {data['country']}排名：{data['cn_achievements_rank']}",
+                f"│  └─ 🌍 世界排名：{data['global_achievements_rank']}"
+            ]
 
         yield event.plain_result("\n".join(lines))
 
