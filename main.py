@@ -1,12 +1,15 @@
 try:
-    # 新版 AstrBot (v4.5+)
-    from astrbot.api.event import filter, AstrMessageEvent
-    from astrbot.api.star import Context, Star, register
-except ImportError:
-    # 旧版 AstrBot (v3.x)
+    # 旧版 AstrBot (v3.x) 核心导入
     from astrbot.core.star import Star, register
     from astrbot.core.message import Message as AstrMessageEvent
     from astrbot.core.context import Context
+    from astrbot.core.decorator import command  # 旧版指令装饰器
+except ImportError:
+    # 备用兼容
+    from astrbot.core.star import BasePlugin as Star, register
+    from astrbot.core.message import Message as AstrMessageEvent
+    from astrbot.core.context import Context
+    command = lambda name, alias=None: lambda f: f
 
 import re
 import json
@@ -169,22 +172,24 @@ async def fetch_steamhunters_data(steam64: str) -> dict | None:
     except Exception:
         return None
 
-# ===================== 插件核心类 =====================
+# ===================== 插件核心类（适配旧版v3.x） =====================
 @register(
-    name="astrbot_plugin_steamachievement_query",
+    name="astrbot_plugin_steamachievement_query",  # 旧版plugin_id
     author="YourName",
-    description="查询SteamHunters成就数据",
     version="1.0.0"
+    # 移除description参数（旧版不支持）
 )
 class SteamAchievementPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.logger = self.context.logger  # 兼容日志输出
+        self.logger = self.context.logger  # 日志对象
+        self.description = "查询SteamHunters成就数据"  # 手动补充描述
 
-    @filter.command("查steam成就", alias={"steam成就", "查steam数据"})
+    # 旧版指令注册方式（兼容v3.x）
+    @command("查steam成就", alias=["steam成就", "查steam数据"])
     async def steam_query(self, event: AstrMessageEvent):
-        # 提取参数
-        input_text = event.message_str.strip() if hasattr(event, "message_str") else event.content.strip()
+        # 提取用户输入（旧版用event.content）
+        input_text = event.content.strip()
         params = input_text.replace("/查steam成就", "").strip()
         
         # 无参数提示
@@ -192,21 +197,13 @@ class SteamAchievementPlugin(Star):
             reply = """❌ 指令格式错误！
 ✅ 正确用法：/查steam成就 <Steam64ID/个人资料URL>
 📌 示例：/查steam成就 76561198187914141"""
-            # 兼容新旧版本的回复方式
-            if hasattr(event, "plain_result"):
-                yield event.plain_result(reply)
-            else:
-                await event.reply(reply)
+            await event.reply(reply)
             return
         
         # 解析Steam64 ID
         steam64 = await parse_steam64_id(params)
         if not steam64:
-            error_msg = "❌ 无法识别Steam ID！请输入17位Steam64 ID或有效个人资料URL"
-            if hasattr(event, "plain_result"):
-                yield event.plain_result(error_msg)
-            else:
-                await event.reply(error_msg)
+            await event.reply("❌ 无法识别Steam ID！请输入17位Steam64 ID或有效个人资料URL")
             return
         
         # 缓存逻辑
@@ -218,11 +215,7 @@ class SteamAchievementPlugin(Star):
         else:
             data = await fetch_steamhunters_data(steam64)
             if not data:
-                fail_msg = "查询失败，请前往SteamHunters手动更新档案"
-                if hasattr(event, "plain_result"):
-                    yield event.plain_result(fail_msg)
-                else:
-                    await event.reply(fail_msg)
+                await event.reply("查询失败，请前往SteamHunters手动更新档案")
                 return
             cache[steam64] = {"timestamp": now, "data": data}
             await save_cache(cache)
@@ -240,8 +233,5 @@ class SteamAchievementPlugin(Star):
 ├─ 🌍 世界排名：{data['global_rank']}
 └─ 🌍 全国排名：{data['cn_rank']}"""
         
-        # 兼容回复方式
-        if hasattr(event, "plain_result"):
-            yield event.plain_result(reply)
-        else:
-            await event.reply(reply)
+        # 旧版直接回复
+        await event.reply(reply)
