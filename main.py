@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
     name="astrbot_plugin_steamachievement_query",
     author="Muroki",
     version="1.0.0",
-    desc="查询SteamHunters平台的游戏成就数据"
+    desc="查询SteamHunters平台的游戏成就数据，精准解析排名"
 )
 class MyPlugin(Star):
     def __init__(self, context: Context):
@@ -145,12 +145,13 @@ class MyPlugin(Star):
                 "playtime": "0",
                 "playtime_ymd": "0年0月0天",
                 "update_time": "未知",
-                "cn_points_rank": "未上榜",
-                "cn_achievements_rank": "未上榜",
-                "cn_completed_rank": "未上榜",
-                "global_points_rank": "未上榜",
-                "global_achievements_rank": "未上榜",
-                "global_completed_rank": "未上榜",
+                # 精准排名字段（完全匹配源码title）
+                "cn_points_rank": "未上榜",          # Country points rank
+                "cn_achievements_rank": "未上榜",    # Country achievements rank
+                "cn_completed_rank": "未上榜",       # Country completed games rank
+                "global_points_rank": "未上榜",      # Global points rank
+                "global_achievements_rank": "未上榜",# Global achievements rank
+                "global_completed_rank": "未上榜",   # Global completed games rank
                 "is_banned": False,
                 "ban_msg": "",
                 "has_data": False
@@ -159,8 +160,9 @@ class MyPlugin(Star):
             txt = soup.get_text(" ").lower()
             if "not listed on the leaderboards" in txt:
                 data["is_banned"] = True
-                data["ban_msg"] = "无法查询有效排名，该用户疑因刷成就被平台封禁"
+                data["ban_msg"] = "无法查询有效排名，该用户疑似因刷成就被平台封禁"
 
+            # 解析用户名
             h1 = soup.find("h1")
             if h1:
                 data["username"] = h1.get_text(strip=True)
@@ -169,8 +171,10 @@ class MyPlugin(Star):
                 if username_match:
                     data["username"] = username_match.group(1)
 
+            # 解析国家
             data["country"] = self._parse_country(soup)
 
+            # 解析核心数据
             points_match = re.search(r"([\d,]+)\s*points", soup.get_text(), re.I)
             if points_match:
                 data["points"] = points_match.group(1).replace(",", "")
@@ -191,6 +195,7 @@ class MyPlugin(Star):
             if rate_match:
                 data["completion_rate"] = f"{rate_match.group(1)}%"
 
+            # 解析时长
             playtime_match = re.search(r"(\d+[¼½¾\.]?\s*years?|\d+[¼½¾\.]?\s*months?|\d+[¼½¾\.]?\s*days?)", soup.get_text(), re.I)
             if playtime_match:
                 playtime_text = playtime_match.group(1)
@@ -211,6 +216,7 @@ class MyPlugin(Star):
                     data["playtime_ymd"] = f"{years}年{months}月{days}天"
                     data["playtime"] = str(int(years)*8760 + int(months)*730 + int(days)*24)
 
+            # 解析更新时间
             update_match = re.search(r"(\d+\s*hours?|\d+\s*days?)\s*ago", soup.get_text(), re.I)
             if update_match:
                 data["update_time"] = update_match.group(1) + "前"
@@ -219,23 +225,28 @@ class MyPlugin(Star):
                 if time_tag and time_tag.get("title"):
                     data["update_time"] = self._parse_update_time(time_tag["title"])
 
-            # 精准解析排名
+            # 解析排名
             def get_rank_by_title(title_text):
+                """根据title属性查找排名，返回去除逗号的数字"""
                 td = soup.find("td", title=title_text)
                 if td:
                     a_tag = td.find("a")
                     if a_tag:
+                        # 提取#后面的数字，去掉逗号
                         rank = re.sub(r"[#,]", "", a_tag.get_text(strip=True))
                         return rank if rank.isdigit() else "未上榜"
                 return "未上榜"
 
+            # 逐个解析排名
             data["cn_points_rank"] = get_rank_by_title("Country points rank")
             data["cn_achievements_rank"] = get_rank_by_title("Country achievements rank")
             data["cn_completed_rank"] = get_rank_by_title("Country completed games rank")
             data["global_points_rank"] = get_rank_by_title("Global points rank")
             data["global_achievements_rank"] = get_rank_by_title("Global achievements rank")
             data["global_completed_rank"] = get_rank_by_title("Global completed games rank")
+            # =====================================================================
 
+            # 有效数据判断
             core_fields = [data["points"], data["achievements"], data["games_played"], data["username"]]
             data["has_data"] = any(x not in ("0", "", "未知") for x in core_fields)
 
@@ -244,26 +255,6 @@ class MyPlugin(Star):
         except Exception as e:
             logger.error(f"获取失败: {e}")
             return None
-
-    # 通用消息发送函数
-    async def _send_message(self, event, message):
-        """兼容不同框架的消息发送方法"""
-        try:
-            # 优先用reply
-            if hasattr(event, 'reply'):
-                await event.reply(message)
-            # 兼容send方法
-            elif hasattr(event, 'send'):
-                await event.send(message)
-            # 兼容其他框架（如go-cqhttp）
-            else:
-                # 获取聊天ID
-                if hasattr(event, 'group_id') and event.group_id:
-                    await self.bot.send_group_msg(group_id=event.group_id, message=message)
-                elif hasattr(event, 'user_id'):
-                    await self.bot.send_private_msg(user_id=event.user_id, message=message)
-        except Exception as e:
-            logger.error(f"发送消息失败: {e}")
 
     @filter.command("查steam成就")
     async def steam_achievement_handler(self, event):
@@ -274,33 +265,35 @@ class MyPlugin(Star):
             argv = msg.split(maxsplit=1)
         
         if len(argv) < 2 or argv[0] != "查steam成就":
-            await self._send_message(event, "用法：查steam成就 Steam64ID/个人资料URL（或 /查steam成就 Steam64ID/个人资料URL）")
+            yield event.plain_result("用法：查steam成就 Steam64ID/个人资料URL（或 /查steam成就 Steam64ID/个人资料URL）")
             return
 
         sid = await self._parse_steam64_id(argv[1])
         if not sid:
-            await self._send_message(event, "无法识别SteamID，请检查格式（支持17位数字Steam64ID、个人资料URL/自定义ID）")
+            yield event.plain_result("无法识别SteamID，请检查格式（支持17位数字Steam64ID、个人资料URL/自定义ID）")
             return
 
         cache = self._init_cache()
         now = int(time.time())
         key = f"sid_{sid}"
 
+        # 强制清理旧缓存（确保读取最新排名）
         if key in cache:
             del cache[key]
             self._save_cache(cache)
 
         data = await self._fetch_steam_data(sid)
         if not data:
-            await self._send_message(event, "查询失败，请检查：\n1. SteamID/URL格式是否正确\n2. Steam隐私设置是否公开\n3. 该账户在SteamHunters有数据")
+            yield event.plain_result("查询失败，请检查：\n1. SteamID/URL格式是否正确\n2. Steam隐私设置是否公开\n3. 该账户在SteamHunters有数据")
             return
         cache[key] = {"ts": now, "data": data}
         self._save_cache(cache)
 
         if not data["has_data"] and not data["is_banned"]:
-            await self._send_message(event, "未查询到有效数据，请检查SteamID是否正确或前往SteamHunters更新档案")
+            yield event.plain_result("未查询到有效数据，请检查SteamID是否正确或前往SteamHunters更新档案")
             return
 
+        # 构造最终返回消息（完全匹配你要的排名）
         lines = [
             f"🎮 Steam成就查询结果（{data['username']}）",
             f"├─ 🗺️ 所属地区：{data['country']}",
@@ -319,7 +312,7 @@ class MyPlugin(Star):
             "├─ 🏅 成就数排名",
             f"│  ├─ 🌍 {data['country']}排名：{data['cn_achievements_rank']}",
             f"│  └─ 🌍 世界排名：{data['global_achievements_rank']}",
-            "├─ 🎮 全成就数排名",
+            "├─ 🎮 完成游戏排名",
             f"│  ├─ 🌍 {data['country']}排名：{data['cn_completed_rank']}",
             f"│  └─ 🌍 世界排名：{data['global_completed_rank']}"
         ]
@@ -327,21 +320,20 @@ class MyPlugin(Star):
         if data["is_banned"]:
             lines.insert(-1, f"├─ ⚠️ {data['ban_msg']}")
 
-        await self._send_message(event, "\n".join(lines))
+        yield event.plain_result("\n".join(lines))
 
     @filter.command("清理steam缓存")
     async def clear_steam_cache(self, event):
-        """清理Steam成就查询的缓存文件"""
         try:
             if self.cache_path.exists():
                 self.cache_path.unlink()
                 self._init_cache()
-                await self._send_message(event, "✅ Steam成就查询缓存已成功清理！")
+                await event.reply("✅ Steam成就查询缓存已成功清理！")
             else:
-                await self._send_message(event, "ℹ️ 当前无Steam成就查询缓存文件，无需清理！")
+                await event.reply("ℹ️ 当前无Steam成就查询缓存文件，无需清理！")
         except Exception as e:
             logger.error(f"清理缓存失败：{e}")
-            await self._send_message(event, f"❌ 清理缓存失败：{str(e)}")
+            await event.reply(f"❌ 清理缓存失败：{str(e)}")
 
     async def terminate(self):
         logger.info("Steam成就插件（v1.0.0）已卸载")
