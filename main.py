@@ -319,7 +319,7 @@ class MyPlugin(Star):
             "├─ 🏅 成就数排名",
             f"│  ├─ 🌍 {data['country']}排名：{data['cn_achievements_rank']}",
             f"│  └─ 🌍 世界排名：{data['global_achievements_rank']}",
-            "├─ 🎮 完成游戏排名（可选）",
+            "├─ 🎮 全成就数排名",
             f"│  ├─ 🌍 {data['country']}排名：{data['cn_completed_rank']}",
             f"│  └─ 🌍 世界排名：{data['global_completed_rank']}"
         ]
