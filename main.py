@@ -230,7 +230,7 @@ class MyPlugin(Star):
 ├─ 📊 成就完成率：{data['completion_rate']}
 ├─ ⏱️ 总游戏时长：{data['playtime']} 小时
 ├─ 🌍 世界排名：{data['global_rank']}
-└─ 🇨🇳 全国排名：{data['cn_rank']}"""
+└─ 🌍 全国排名：{data['cn_rank']}"""
         
         yield event.plain_result(reply)
     
