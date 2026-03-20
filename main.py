@@ -157,7 +157,7 @@ class MyPlugin(Star):
                     v = tag.get_text(strip=True).replace("..", ".")
                     data[k] = v
 
-            # 游戏时长 最终修复
+            # 游戏时长
             playtime_tag = soup.find("div", class_="stat-item", string=re.compile("Playtime", re.I))
             if playtime_tag:
                 pt_text = playtime_tag.get_text(strip=True)
@@ -209,7 +209,7 @@ class MyPlugin(Star):
         # 2. 解析ID并判断格式
         sid = await self._parse_steam64_id(argv[1])
         if not sid:
-            # 优化后的格式错误提示
+            # 格式错误提示
             yield event.plain_result("请输入正确格式：/查steam成就 + steam64id 或steam主页URL")
             return
 
