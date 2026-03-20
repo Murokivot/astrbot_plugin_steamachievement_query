@@ -1,6 +1,6 @@
 name: astrbot_plugin_steamachievement_query
 display_name: SteamHunter成就查询
-desc: 查询Steam账户成就数据，包括成就积分、成就完成数、世界排名、全国排名等，支持Steam64ID和个人资料URL查询。
+desc: 快速查询Steam成就积分、成就数、积分排名等信息的简易插件。
 version: v1.0.0
 author: Muroki
 repo: https://github.com/Murokivot/astrbot_plugin_steamachievement_query
