@@ -44,19 +44,33 @@ class MyPlugin(Star):
             logger.error(f"缓存保存失败: {e}")
 
     async def _parse_steam64_id(self, input_str: str) -> str | None:
+        """
+        宽松的ID解析逻辑（恢复原有功能）
+        支持：17位数字ID、Steam URL、自定义ID
+        只有完全无法识别时才返回None
+        """
         s = input_str.strip()
-        # 匹配纯Steam64ID（17位数字）
+        
+        # 1. 纯17位数字（Steam64ID）- 优先级最高
         if re.fullmatch(r"\d{17}", s):
             return s
-        # 匹配Steam个人资料URL中的64ID
-        url_match = re.search(r"steamcommunity\.com/(?:profiles/(\d{17})|id/([^/]+))", s)
-        if url_match:
-            # 优先返回64ID，没有则返回自定义ID
-            return url_match.group(1) or url_match.group(2)
-        # 匹配纯自定义ID（字母数字下划线）
-        if re.match(r"^[a-zA-Z0-9_-]+$", s):
+        
+        # 2. 从Steam URL中提取ID（宽松匹配）
+        url_patterns = [
+            r"steamcommunity\.com/(?:profiles|id)/([^/?]+)",  # 标准URL
+            r"profiles/(\d{17})",  # 简化URL
+            r"id/([a-zA-Z0-9_-]+)"  # 自定义ID URL
+        ]
+        for pattern in url_patterns:
+            match = re.search(pattern, s, re.I)
+            if match:
+                return match.group(1)
+        
+        # 3. 自定义ID（字母/数字/下划线/连字符）- 宽松匹配
+        if re.match(r"^[a-zA-Z0-9_\-]{3,}$", s):
             return s
-        # 格式不正确返回None
+        
+        # 4. 只有完全不符合以上规则才返回None（格式错误）
         return None
 
     def _parse_update_time(self, title_str):
@@ -123,7 +137,7 @@ class MyPlugin(Star):
                 "has_data": False
             }
 
-            # 封禁检测
+            # 封禁检测（全局文本匹配，100%生效）
             txt = soup.get_text(" ").lower()
             if "not listed on the leaderboards" in txt:
                 data["is_banned"] = True
@@ -136,7 +150,7 @@ class MyPlugin(Star):
 
             data["country"] = self._parse_country(soup)
 
-            # 各项数据
+            # 各项核心数据解析
             keys = [
                 ("points", "ValidPoints"),
                 ("achievements", "ValidAchievementUnlockCount"),
@@ -157,7 +171,7 @@ class MyPlugin(Star):
                     v = tag.get_text(strip=True).replace("..", ".")
                     data[k] = v
 
-            # 游戏时长
+            # 游戏时长 最终修复（精准匹配）
             playtime_tag = soup.find("div", class_="stat-item", string=re.compile("Playtime", re.I))
             if playtime_tag:
                 pt_text = playtime_tag.get_text(strip=True)
@@ -170,21 +184,22 @@ class MyPlugin(Star):
                 if m:
                     data["playtime"] = m.group(1).replace(",", "")
 
-            # 更新时间
+            # 更新时间解析
             time_tag = soup.find("time", class_="title")
             if time_tag and time_tag.get("title"):
                 data["update_time"] = self._parse_update_time(time_tag["title"])
 
-            # 是否有有效数据
-            core = [data["points"], data["achievements"], data["games_played"]]
-            data["has_data"] = any(x not in ("0", "") for x in core)
+            # 判断是否有有效数据（核心字段非空/非0）
+            core_fields = [data["points"], data["achievements"], data["games_played"]]
+            data["has_data"] = any(x not in ("0", "") for x in core_fields)
 
-            # 排名
+            # 排名解析（未封禁且有数据时）
             if not data["is_banned"] and data["has_data"]:
                 cp = soup.find("td", title=re.compile("Country points rank", re.I))
                 gp = soup.find("td", title=re.compile("Global points rank", re.I))
                 ca = soup.find("td", title=re.compile("Country achievements rank", re.I))
                 ga = soup.find("td", title=re.compile("Global achievements rank", re.I))
+                
                 data["cn_points_rank"] = self._parse_rank(cp)
                 data["global_points_rank"] = self._parse_rank(gp)
                 data["cn_achievements_rank"] = self._parse_rank(ca)
@@ -193,7 +208,7 @@ class MyPlugin(Star):
             return data
 
         except Exception as e:
-            logger.error(f"获取失败: {e}")
+            logger.error(f"数据获取失败: {str(e)}")
             return None
 
     @filter.command("查steam成就")
@@ -201,19 +216,19 @@ class MyPlugin(Star):
         msg = event.message_str.strip()
         argv = msg.split(maxsplit=1)
         
-        # 1. 无参数提示
+        # 1. 无参数 - 提示正确格式
         if len(argv) < 2:
             yield event.plain_result("请输入正确格式：/查steam成就 + steam64id 或steam主页URL")
             return
 
-        # 2. 解析ID并判断格式
+        # 2. 解析ID
         sid = await self._parse_steam64_id(argv[1])
+        # 3. ID格式完全错误 - 提示正确格式
         if not sid:
-            # 格式错误提示
             yield event.plain_result("请输入正确格式：/查steam成就 + steam64id 或steam主页URL")
             return
 
-        # 3. 缓存逻辑
+        # 4. 缓存逻辑
         cache = self._init_cache()
         now = int(time.time())
         key = f"sid_{sid}"
@@ -221,19 +236,22 @@ class MyPlugin(Star):
         if key in cache and now - cache[key]["ts"] < self.cache_expire:
             data = cache[key]["data"]
         else:
+            # 5. 调用接口获取数据
             data = await self._fetch_steam_data(sid)
+            # 6. 接口返回空（无法访问/无数据）- 提示检查档案
             if not data:
                 yield event.plain_result("未查询到档案，请检查steam隐私设置，并前往SteamHunter更新档案")
                 return
+            # 7. 存入缓存
             cache[key] = {"ts": now, "data": data}
             self._save_cache(cache)
 
-        # 4. 无数据兜底提示
+        # 8. 有ID但无有效数据（非封禁）- 提示检查档案
         if not data["has_data"] and not data["is_banned"]:
             yield event.plain_result("未查询到档案，请检查steam隐私设置，并前往SteamHunter更新档案")
             return
 
-        # 5. 构建正常回复
+        # 9. 构建正常回复
         lines = [
             f"🎮 Steam成就查询结果（{data['username']}）",
             f"├─ 🗺️ 所属地区：{data['country']}",
@@ -247,11 +265,13 @@ class MyPlugin(Star):
             f"├─ 🕒 档案最近更新：{data['update_time']}"
         ]
 
-        # 6. 封禁提示
+        # 10. 封禁提示
         if data["is_banned"]:
             lines.append(f"├─ ⚠️ {data['ban_msg']}")
         else:
+            # 11. 显示排名（有数据时）
             lines += [
+                "├────────────────────────────",
                 "├─ 📈 积分排名",
                 f"│  ├─ 🌍 {data['country']}排名：{data['cn_points_rank']}",
                 f"│  └─ 🌍 世界排名：{data['global_points_rank']}",
@@ -260,6 +280,7 @@ class MyPlugin(Star):
                 f"│  └─ 🌍 世界排名：{data['global_achievements_rank']}"
             ]
 
+        # 12. 输出最终结果
         yield event.plain_result("\n".join(lines))
 
     async def terminate(self):
