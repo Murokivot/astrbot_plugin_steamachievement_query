@@ -1,4 +1,3 @@
-# /AstrBot/data/plugins/steam_achievement/main.py
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger  # 官方logger接口
