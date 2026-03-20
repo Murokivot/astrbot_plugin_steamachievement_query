@@ -5,3 +5,5 @@
 使用方法：/查steam成就 <Steam64ID>/<Steam个人主页链接>
 
 ps：需要保持Steam个人资料公开并在SteamHunter（steamhunters.com）网站更新账号信息（点击账户头像旁的update）。
+
+ps2：不建议使用成就作弊软件，被平台检测并封禁时也会播报！
