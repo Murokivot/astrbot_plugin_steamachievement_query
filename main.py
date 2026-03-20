@@ -11,8 +11,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 
 @register(
-    name="astrbot_plugin_steamachievement_query
-",
+    name="astrbot_plugin_steamachievement_query",
     author="Muroki",
     version="1.0.0",
     desc="查询SteamHunters平台的游戏成就数据，支持Steam64ID/个人资料URL"
