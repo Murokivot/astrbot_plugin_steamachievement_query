@@ -172,18 +172,47 @@ class MyPlugin(Star):
                     data[k] = v
 
             # 游戏时长 最终修复（精准匹配）
-            playtime_tag = soup.find("div", class_="stat-item", string=re.compile("Playtime", re.I))
-            if playtime_tag:
-                pt_text = playtime_tag.get_text(strip=True)
-                m = re.search(r"([\d,\.]+)\s*(?:hrs|hours)", pt_text, re.I)
-                if m:
-                    data["playtime"] = m.group(1).replace(",", "")
-            else:
-                all_text = soup.get_text()
-                m = re.search(r"Playtime.*?([\d,\.]+)\s*(?:hrs|hours)", all_text, re.I | re.S)
-                if m:
-                    data["playtime"] = m.group(1).replace(",", "")
 
+            playtime_tag = soup.find
+            ("div",  attrs={
+                "data-toggle": "tooltip",  # 关键属性1
+                    # 备选：如果有class可以加上，比如 class_="stat-item"
+                },
+                # 确保标签内包含playtime相关内容
+                string=lambda text: text and re.search(r"playtime", text, re.I)
+            )
+            if playtime_tag:
+                # 核心：获取title属性中的完整文本
+                title_text = playtime_tag.get("data-original-title", "")
+                if title_text:
+                    # 匹配title中 <value>37,414</value> 格式的数字
+                    m = re.search(r"<value>([\d,]+)</value>\s*hours", title_text, re.I)
+                    if m:
+                        # 清理逗号并转换为整数
+                        playtime_str = m.group(1).replace(",", "")
+                        try:
+                            data["playtime"] = int(playtime_str)  # 37414
+                        except ValueError:
+                            data["playtime"] = None
+                    else:
+                        data["playtime"] = None
+                else:
+                    data["playtime"] = None
+            else:
+                # 备用方案：兼容之前的普通格式
+                all_text = soup.get_text()
+                m = re.search(r"Playtime\s*[:：]?\s*(\d+(?:[,\.]\d+)?)\s*(?:hrs?|hours)", 
+                              all_text, re.I | re.S)
+                if m:
+                    playtime_str = m.group(1).replace(",", "")
+                    try:
+                        data["playtime"] = float(playtime_str)
+                    except ValueError:
+                        data["playtime"] = None
+                else:
+                    data["playtime"] = None
+
+            
             # 更新时间解析
             time_tag = soup.find("time", class_="title")
             if time_tag and time_tag.get("title"):
